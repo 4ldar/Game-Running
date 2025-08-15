@@ -14,7 +14,7 @@
     <div id="menu" class="menu">
         <h1>SPACE DODGER</h1>
         <p class="subtitle">A JOURNEY THROUGH THE COSMOS</p>
-        <div class="high-score">BEST: <span id="high-score-value">0</span> km</div>
+        <div class="high-score">BEST: <span id="high-score-value">0; 0.0 km</span></div>
         <button id="startBtn" class="neon-btn">START</button>
         <button id="quitBtn" class="neon-btn">QUIT</button>
     </div>
@@ -31,8 +31,24 @@
 
     <div id="hud" class="hud hidden">
         <div class="hud-section">
+            <div class="hud-title">SCORE</div>
+            <div id="score" class="hud-value">0</div>
+        </div>
+        <div class="hud-section">
             <div class="hud-title">DISTANCE</div>
             <div id="distance" class="hud-value">0.0 km</div>
+        </div>
+        <div class="hud-section">
+            <div class="hud-title">DESTROYED</div>
+            <div id="destroyed" class="hud-value">0</div>
+        </div>
+        <div class="hud-section">
+            <div class="hud-title">LEVEL</div>
+            <div id="level" class="hud-value">LEVEL 1</div>
+        </div>
+        <div class="hud-section">
+            <div class="hud-title">PROGRESS</div>
+            <div id="level-progress" class="hud-value">0%</div>
         </div>
         <div class="hud-section">
             <div class="hud-title">HEALTH</div>
