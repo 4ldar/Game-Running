@@ -37,6 +37,15 @@ const menuCameraPos = new THREE.Vector3(0, 2, 12);
 const gameCameraPos = new THREE.Vector3(0, 4, 10);
 
 // ========== AUDIO & EFFECTS HELPERS ========== 
+const mainMenuMusic = new Audio('assets/sounds/mainmenu.ogg');
+mainMenuMusic.loop = true;
+const inGameMusic = new Audio('assets/sounds/bgmingame.wav');
+inGameMusic.loop = true;
+inGameMusic.volume = 0.95;
+const inGameAmbient = new Audio('assets/sounds/ingame.mp3');
+inGameAmbient.loop = true;
+inGameAmbient.volume = 0.6;
+
 function playSound(soundFile) {
     try {
         const audio = new Audio(`assets/sounds/${soundFile}`);
@@ -44,6 +53,27 @@ function playSound(soundFile) {
     } catch (e) {
         console.log(`Could not play sound: ${soundFile}. Make sure it exists in assets/sounds/`);
     }
+}
+
+function startMainMenuMusic() {
+    inGameMusic.pause();
+    inGameAmbient.pause();
+    mainMenuMusic.currentTime = 0;
+    mainMenuMusic.play().catch(e => console.log("Menu music play failed. User interaction needed."));
+}
+
+function startGameMusic() {
+    mainMenuMusic.pause();
+    inGameMusic.currentTime = 0;
+    inGameMusic.play().catch(e => console.log("In-game music play failed."));
+    inGameAmbient.currentTime = 0;
+    inGameAmbient.play().catch(e => console.log("In-game ambient play failed."));
+}
+
+function stopAllMusic() {
+    mainMenuMusic.pause();
+    inGameMusic.pause();
+    inGameAmbient.pause();
 }
 
 function triggerScreenShake(duration = 10, intensity = 0.1) {
@@ -135,6 +165,7 @@ function loadAllShips() {
                 gameState = 'menu';
                 subtitle.textContent = 'A JOURNEY THROUGH THE COSMOS';
                 player = loadedShipModels[currentShipIndex];
+                startMainMenuMusic();
             }
         }, undefined, (error) => {
             console.error(`Failed to load ship: ${shipInfo.name}`, error);
@@ -171,6 +202,7 @@ function confirmShipSelection() {
     document.getElementById('ship-selection').classList.add('hidden');
     resetGameStats();
     createThruster();
+    startGameMusic();
 }
 
 function createThruster() {
@@ -218,12 +250,14 @@ function quitToMenu() {
     document.getElementById('ship-selection').classList.add('hidden');
     document.getElementById('menu').classList.remove('hidden');
     displayHighScore();
+    startMainMenuMusic();
 }
 
 function gameOver() {
     gameState = 'gameover';
     updateHighScore();
     if(player) player.visible = false;
+    stopAllMusic();
     
     setTimeout(() => {
         alert(`GAME OVER\nScore: ${score}\nDistance: ${(distance / 1000).toFixed(1)} km\nAsteroids Destroyed: ${asteroidsDestroyed}\nLevel Reached: ${level}`);
@@ -359,7 +393,7 @@ function spawnBossAsteroid() {
     
     const boss = new THREE.Mesh(
         new THREE.DodecahedronGeometry(bossSize, 1), 
-        new THREE.MeshStandardMaterial({ 
+        new THREE.MeshStandardMaterial({
             color: 0xff0000, 
             flatShading: true,
             emissive: 0x330000,
@@ -562,15 +596,35 @@ function updateHUD() {
     }
     
     const shieldDisplay = document.getElementById('shield');
-    if (shieldActive) { shieldDisplay.textContent = `ACTIVE: ${Math.ceil(shieldTimer / 60)}s`; shieldDisplay.style.color = '#00ccff'; }
+    if (shieldActive) { shieldDisplay.textContent = `ACTIVE: ${Math.ceil(shieldTimer / 60)}s`; shieldDisplay.style.color = '#00ccff'; } 
     else if (shieldCooldown > 0) { shieldDisplay.textContent = `COOLDOWN: ${Math.ceil(shieldCooldown / 60)}s`; shieldDisplay.style.color = '#ff6600'; }
     else { shieldDisplay.textContent = 'READY'; shieldDisplay.style.color = '#00ff88'; }
     updateHearts();
 }
 
 function updateHearts() { document.getElementById('hearts').textContent = '❤️'.repeat(health); }
-function togglePause() { gameState = (gameState === 'playing') ? 'paused' : 'playing'; document.getElementById('pauseMenu').classList.toggle('hidden'); if(thruster) thruster.visible = (gameState === 'playing'); }
-function resumeGame() { gameState = 'playing'; document.getElementById('pauseMenu').classList.add('hidden'); if(thruster) thruster.visible = true; }
+
+function togglePause() { 
+    gameState = (gameState === 'playing') ? 'paused' : 'playing'; 
+    document.getElementById('pauseMenu').classList.toggle('hidden'); 
+    if(thruster) thruster.visible = (gameState === 'playing');
+    if (gameState === 'paused') {
+        inGameMusic.pause();
+        inGameAmbient.pause();
+    } else {
+        inGameMusic.play();
+        inGameAmbient.play();
+    }
+}
+
+function resumeGame() { 
+    gameState = 'playing'; 
+    document.getElementById('pauseMenu').classList.add('hidden'); 
+    if(thruster) thruster.visible = true; 
+    inGameMusic.play();
+    inGameAmbient.play();
+}
+
 function onWindowResize() { if (!camera || !renderer) return; camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
 
 function createGalaxy() {
