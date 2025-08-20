@@ -3,6 +3,7 @@ let scene, camera, renderer, starfield;
 let keys = {};
 let screenShake = { active: false, duration: 0, intensity: 0 };
 let isInvincible = false, invincibilityTimer = 0;
+let lastPositionX = 0, stationaryFrames = 0;
 
 // Ship and player management
 let player; 
@@ -31,10 +32,14 @@ let score = 0, distance = 0, asteroidsDestroyed = 0, health = 3;
 let level = 1, levelProgress = 0;
 let asteroidSpawnCounter = 0;
 let shieldActive = false, shieldTimer = 0, shieldCooldown = 0;
+let isPlanetLevel = false;
+let skillActive = false, skillCooldown = 0;
+let laser = null;
 
 // Camera positions
 const menuCameraPos = new THREE.Vector3(0, 2, 12);
 const gameCameraPos = new THREE.Vector3(0, 4, 10);
+const planetCameraPos = new THREE.Vector3(0, 4, 15);
 
 // ========== AUDIO & EFFECTS HELPERS ========== 
 const mainMenuMusic = new Audio('assets/sounds/mainmenu.ogg');
@@ -46,12 +51,14 @@ const inGameAmbient = new Audio('assets/sounds/ingame.mp3');
 inGameAmbient.loop = true;
 inGameAmbient.volume = 0.6;
 
-function playSound(soundFile) {
+function playSound(soundFile, volume = 1.0) {
     try {
         const audio = new Audio(`assets/sounds/${soundFile}`);
+        audio.volume = volume;
         audio.play();
+        console.log(`Playing sound: ${soundFile}`); // Added for debugging
     } catch (e) {
-        console.log(`Could not play sound: ${soundFile}. Make sure it exists in assets/sounds/`);
+        console.log(`Could not play sound: ${soundFile}. Error: ${e.message}`); // Added error message
     }
 }
 
@@ -64,10 +71,9 @@ function startMainMenuMusic() {
 
 function startGameMusic() {
     mainMenuMusic.pause();
+    inGameAmbient.pause();
     inGameMusic.currentTime = 0;
     inGameMusic.play().catch(e => console.log("In-game music play failed."));
-    inGameAmbient.currentTime = 0;
-    inGameAmbient.play().catch(e => console.log("In-game ambient play failed."));
 }
 
 function stopAllMusic() {
@@ -108,7 +114,7 @@ function initThree() {
 
 function setupEventListeners() {
     document.getElementById('startBtn').addEventListener('click', showShipSelection);
-    document.getElementById('quitBtn').addEventListener('click', () => window.close());
+    document.getElementById('quitBtn').addEventListener('click', () => { window.location.href = 'login.html'; });
     document.getElementById('prevShipBtn').addEventListener('click', () => changeShip(-1));
     document.getElementById('nextShipBtn').addEventListener('click', () => changeShip(1));
     document.getElementById('confirmShipBtn').addEventListener('click', confirmShipSelection);
@@ -118,8 +124,16 @@ function setupEventListeners() {
     window.addEventListener('keydown', e => {
         keys[e.code] = true;
         if (e.code === "Escape" && gameState === 'playing') togglePause();
-        if (e.code === "Space" && gameState === 'playing' && !keys['SpaceFired']) { shootBullet(); keys['SpaceFired'] = true; }
+        if (e.code === "Space" && gameState === 'playing' && !keys['SpaceFired']) {
+            if (skillActive && shipData[currentShipIndex].name === 'STARFIRE') {
+                // handled in update
+            } else {
+                shootBullet();
+            }
+            keys['SpaceFired'] = true;
+        }
         if (e.code === "KeyS" && gameState === 'playing' && !shieldActive && shieldCooldown <= 0) activateShield();
+        if (e.code === "Digit1" && gameState === 'playing' && !skillActive && skillCooldown <= 0) activateSkill();
     });
     window.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === "Space") keys['SpaceFired'] = false; });
     window.addEventListener('resize', onWindowResize);
@@ -127,9 +141,15 @@ function setupEventListeners() {
 
 // ========== HIGH SCORE LOGIC ========== 
 function displayHighScore() {
-    const bestScore = parseInt(localStorage.getItem('spaceDodgerBestScore') || '0', 10);
-    const bestDistance = parseInt(localStorage.getItem('spaceDodgerBestDistance') || '0', 10);
-    document.getElementById('high-score-value').textContent = `${bestScore}; ${(bestDistance / 1000).toFixed(1)} km`;
+    const bestScore = parseInt(localStorage.getItem('spaceDodgerBestScore'));
+    const bestDistance = parseInt(localStorage.getItem('spaceDodgerBestDistance'));
+    const highScoreElement = document.getElementById('high-score-value');
+
+    if (isNaN(bestScore) || isNaN(bestDistance)) {
+        highScoreElement.textContent = 'N/A';
+    } else {
+        highScoreElement.textContent = `${bestScore}; ${(bestDistance / 1000).toFixed(1)} km`;
+    }
 }
 
 function updateHighScore() {
@@ -205,15 +225,54 @@ function confirmShipSelection() {
     startGameMusic();
 }
 
+function startLevelTransition() {
+    gameState = 'level_transitioning';
+    createPlanetscape();
+    inGameMusic.pause();
+    inGameAmbient.currentTime = 0;
+    inGameAmbient.play().catch(e => console.log("In-game ambient play failed."));
+}
+
+let particles; // Define particles in a broader scope
+
 function createThruster() {
     if (thruster && thruster.parent) thruster.parent.remove(thruster);
-    const thrusterGeo = new THREE.ConeGeometry(0.15, 0.8, 16);
-    const thrusterMat = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
-    thruster = new THREE.Mesh(thrusterGeo, thrusterMat);
-    thruster.position.set(0, 0, 0.8);
-    thruster.rotation.set(Math.PI / 2, 0, 0);
-    thruster.visible = false;
-    player.add(thruster);
+    if (particles && particles.parent) particles.parent.remove(particles);
+
+    const particleCount = 200;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
+
+    const textureLoader = new THREE.TextureLoader();
+    const particleTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAABlBMVEUAAAD///+l2Z/dAAAAAnRSTlMA/1uRIrUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADKSURBVDjL7ZJBDsQgDEMtHhQ99/3/v6xCIk6iQCL6iIunYg0l4sE4wzC8xEB2h+k2GR8wV+emh3NnIysj5Xy/XQY1+yLg5Lz/HwZ+wX8gBI4gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB44gB4e8/aqAAAAAYagAAAABJRU5ErkJggg==');
+
+    const material = new THREE.PointsMaterial({
+        color: 0xffa500,
+        size: 0.5, // Increased size
+        map: particleTexture,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite: false
+    });
+
+    for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 0.2;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 0.2;
+        positions[i * 3 + 2] = Math.random() * 1.0; // Increased initial Z spread
+
+        velocities[i * 3] = (Math.random() - 0.5) * 0.01;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.01;
+        velocities[i * 3 + 2] = Math.random() * 0.2 + 0.1; // Increased Z velocity
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+
+    particles = new THREE.Points(geometry, material);
+    particles.position.set(0, 0, 0.8);
+    particles.visible = false; // Initially hidden
+    player.add(particles);
 }
 
 // ========== STATE TRANSITIONS & CLEANUP ========== 
@@ -236,6 +295,9 @@ function resetGameStats() {
     level = 1; levelProgress = 0;
     shieldActive = false; shieldTimer = 0; shieldCooldown = 0;
     isInvincible = false; invincibilityTimer = 0;
+    isPlanetLevel = false; // Reset planet level flag
+    skillActive = false; skillCooldown = 0; // Reset skill state
+    if (laser) { scene.remove(laser); laser = null; } // Remove laser if active
     if (player) {
         player.position.set(0, 0, 0);
         player.rotation.copy(shipData[currentShipIndex].correctionalRotation);
@@ -251,6 +313,10 @@ function quitToMenu() {
     document.getElementById('menu').classList.remove('hidden');
     displayHighScore();
     startMainMenuMusic();
+    // Reset camera and background to galaxy
+    camera.position.copy(menuCameraPos);
+    scene.background = new THREE.Color(0x000011);
+    if (!starfield) createGalaxy(); // Recreate galaxy if it was removed for planetscape
 }
 
 function gameOver() {
@@ -261,7 +327,7 @@ function gameOver() {
     
     setTimeout(() => {
         alert(`GAME OVER\nScore: ${score}\nDistance: ${(distance / 1000).toFixed(1)} km\nAsteroids Destroyed: ${asteroidsDestroyed}\nLevel Reached: ${level}`);
-        quitToMenu();
+        quitToMenu(); // Call quitToMenu for full reset
     }, 500);
 }
 
@@ -427,13 +493,40 @@ function spawnBossAsteroid() {
 
 function shootBullet() {
     if (!player) return;
-    playSound('laser.mp3');
-    const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
-    bullet.position.copy(player.position);
-    bullet.position.z -= 1.5;
-    bullet.userData = { speed: -0.8 };
-    scene.add(bullet);
-    bullets.push(bullet);
+
+    if (skillActive) {
+        // TODO: Add new laser sounds for skills when provided
+        if (shipData[currentShipIndex].name === 'STARFIRE') {
+            playSound('laserstarfire.mp3');
+            if (!laser) {
+                const laserGeo = new THREE.CylinderGeometry(0.1, 0.1, 100, 8);
+                const laserMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
+                laser = new THREE.Mesh(laserGeo, laserMat);
+                laser.rotation.x = Math.PI / 2;
+                laser.position.set(player.position.x, player.position.y, player.position.z - 50);
+                scene.add(laser);
+            }
+        } else if (shipData[currentShipIndex].name === 'BLUE NOVA') {
+            playSound('laserbluenova.wav', 0.5); // Reduced volume
+            for (let i = -1; i <= 1; i++) {
+                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+                bullet.position.copy(player.position);
+                bullet.position.x += i * 0.5;
+                bullet.position.z -= 1.5;
+                bullet.userData = { speed: -0.8 };
+                scene.add(bullet);
+                bullets.push(bullet);
+            }
+        }
+    } else {
+        playSound('laser.mp3');
+        const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+        bullet.position.copy(player.position);
+        bullet.position.z -= 1.5;
+        bullet.userData = { speed: -0.8 };
+        scene.add(bullet);
+        bullets.push(bullet);
+    }
 }
 
 function activateShield() {
@@ -443,6 +536,14 @@ function activateShield() {
         shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), new THREE.MeshStandardMaterial({ color: 0x0088ff, transparent: true, opacity: 0.3, emissive: 0x0088ff, emissiveIntensity: 1, depthWrite: false }));
         player.add(shieldMesh);
     }
+    updateHUD();
+}
+
+function activateSkill() {
+    if (skillActive || skillCooldown > 0) return;
+    // TODO: Add new laser sounds for skills when provided
+    skillActive = true;
+    skillCooldown = 600; // 10 seconds cooldown
     updateHUD();
 }
 
@@ -461,8 +562,36 @@ function updateDebris() {
     }
 }
 
+function updateParticles() {
+    if (!particles) return;
+
+    const positions = particles.geometry.attributes.position.array;
+    const velocities = particles.geometry.attributes.velocity.array;
+
+    for (let i = 0; i < positions.length / 3; i++) {
+        positions[i * 3] += velocities[i * 3];
+        positions[i * 3 + 1] += velocities[i * 3 + 1];
+        positions[i * 3 + 2] += velocities[i * 3 + 2];
+
+        if (positions[i * 3 + 2] > 2.0) { // Increased reset distance
+            positions[i * 3] = (Math.random() - 0.5) * 0.2;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 0.2;
+            positions[i * 3 + 2] = Math.random() * 1.0; // Reset within new initial Z spread
+        }
+    }
+
+    particles.geometry.attributes.position.needsUpdate = true;
+}
+
 function updatePlayingState() {
     if (!player) return;
+
+    if (player.position.x === lastPositionX) {
+        stationaryFrames++;
+    } else {
+        stationaryFrames = 0;
+    }
+    lastPositionX = player.position.x;
 
     if (isInvincible) {
         invincibilityTimer--;
@@ -482,6 +611,10 @@ function updatePlayingState() {
     if (newLevel > level) {
         level = newLevel;
         showLevelUp();
+        if (level === 11 && !isPlanetLevel) {
+            isPlanetLevel = true;
+            startLevelTransition();
+        }
     }
     levelProgress = getLevelProgress();
     
@@ -548,16 +681,59 @@ function updatePlayingState() {
     if (shieldActive) {
         shieldTimer--;
         if (shieldTimer <= 0) { shieldActive = false; shieldCooldown = 600; if (player && shieldMesh) player.remove(shieldMesh); shieldMesh = null; }
-    } else if (shieldCooldown > 0) { shieldCooldown--; }
-
-    if (thruster) {
-        thruster.visible = true;
-        thruster.scale.y = 1 + Math.random() * 0.8;
-        thruster.scale.x = thruster.scale.z = 1 + Math.random() * 0.5;
+    } else if (shieldCooldown > 0) { 
+        shieldCooldown--; 
     }
 
+    if (skillActive) {
+        if (shipData[currentShipIndex].name === 'STARFIRE' && keys['Space']) {
+            if (!laser) {
+                const laserGeo = new THREE.CylinderGeometry(0.1, 0.1, 100, 8);
+                const laserMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
+                laser = new THREE.Mesh(laserGeo, laserMat);
+                laser.rotation.x = Math.PI / 2;
+                scene.add(laser);
+            }
+            laser.position.set(player.position.x, player.position.y, player.position.z - 50);
+
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const ast = asteroids[i];
+                if (Math.abs(ast.position.x - player.position.x) < 0.5) {
+                    ast.userData.health -= 0.1; // Damage over time
+                    if (ast.userData.health <= 0) {
+                        const points = ast.userData.isBoss ? level * 100 : 50;
+                        score += points;
+                        asteroidsDestroyed++;
+                        createExplosion(ast.position);
+                        scene.remove(ast);
+                        asteroids.splice(i, 1);
+                    }
+                }
+            }
+
+        } else if (laser) {
+            scene.remove(laser);
+            laser = null;
+        }
+
+        skillCooldown--;
+        if (skillCooldown <= 0) {
+            skillActive = false;
+            if (laser) {
+                scene.remove(laser);
+                laser = null;
+            }
+        }
+    } else if (skillCooldown > 0) {
+        skillCooldown--;
+    }
+
+    if (particles) particles.visible = true;
+    updateParticles();
     updateDebris();
-    distance++;
+    if (stationaryFrames < 300) {
+        distance++;
+    }
     updateHUD();
 }
 
@@ -599,6 +775,12 @@ function updateHUD() {
     if (shieldActive) { shieldDisplay.textContent = `ACTIVE: ${Math.ceil(shieldTimer / 60)}s`; shieldDisplay.style.color = '#00ccff'; } 
     else if (shieldCooldown > 0) { shieldDisplay.textContent = `COOLDOWN: ${Math.ceil(shieldCooldown / 60)}s`; shieldDisplay.style.color = '#ff6600'; }
     else { shieldDisplay.textContent = 'READY'; shieldDisplay.style.color = '#00ff88'; }
+
+    const skillDisplay = document.getElementById('skill');
+    if (skillActive) { skillDisplay.textContent = `ACTIVE: ${Math.ceil(skillCooldown / 60)}s`; skillDisplay.style.color = '#ffcc00'; } 
+    else if (skillCooldown > 0) { skillDisplay.textContent = `COOLDOWN: ${Math.ceil(skillCooldown / 60)}s`; skillDisplay.style.color = '#ff6600'; }
+    else { skillDisplay.textContent = 'READY'; skillDisplay.style.color = '#00ff88'; }
+
     updateHearts();
 }
 
@@ -607,22 +789,31 @@ function updateHearts() { document.getElementById('hearts').textContent = '‚ù§Ô∏
 function togglePause() { 
     gameState = (gameState === 'playing') ? 'paused' : 'playing'; 
     document.getElementById('pauseMenu').classList.toggle('hidden'); 
-    if(thruster) thruster.visible = (gameState === 'playing');
+    if(particles) particles.visible = (gameState === 'playing');
     if (gameState === 'paused') {
-        inGameMusic.pause();
-        inGameAmbient.pause();
+        if (isPlanetLevel) {
+            inGameAmbient.pause();
+        } else {
+            inGameMusic.pause();
+        }
     } else {
-        inGameMusic.play();
-        inGameAmbient.play();
+        if (isPlanetLevel) {
+            inGameAmbient.play();
+        } else {
+            inGameMusic.play();
+        }
     }
 }
 
 function resumeGame() { 
     gameState = 'playing'; 
     document.getElementById('pauseMenu').classList.add('hidden'); 
-    if(thruster) thruster.visible = true; 
-    inGameMusic.play();
-    inGameAmbient.play();
+    if(particles) particles.visible = true; 
+    if (isPlanetLevel) {
+        inGameAmbient.play();
+    } else {
+        inGameMusic.play();
+    }
 }
 
 function onWindowResize() { if (!camera || !renderer) return; camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
@@ -635,6 +826,25 @@ function createGalaxy() {
     const material = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
     starfield = new THREE.Points(geometry, material);
     scene.add(starfield);
+}
+
+function createPlanetscape() {
+    scene.background = new THREE.Color(0x440000); // Reddish background
+    // Remove existing starfield if any
+    if (starfield) {
+        scene.remove(starfield);
+    }
+
+    // Add a ground plane to represent the planet surface
+    const groundGeometry = new THREE.PlaneGeometry(100, 200, 10, 10);
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, side: THREE.DoubleSide });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -10;
+    scene.add(ground);
+
+    // Add some fog
+    scene.fog = new THREE.Fog(0x440000, 10, 100);
 }
 
 // ========== MAIN ANIMATION LOOP ========== 
@@ -674,6 +884,13 @@ function animate() {
                 document.getElementById('hud').classList.remove('hidden');
                 player.rotation.copy(shipData[currentShipIndex].correctionalRotation);
                 updateHUD();
+            }
+            break;
+
+        case 'level_transitioning':
+            camera.position.lerp(planetCameraPos, 0.05);
+            if (camera.position.distanceTo(planetCameraPos) < 0.1) {
+                gameState = 'playing';
             }
             break;
 

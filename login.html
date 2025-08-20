@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Space Dodger</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="menu" class="menu">
+        <h1>SPACE DODGER</h1>
+        <p class="subtitle">A JOURNEY THROUGH THE COSMOS</p>
+        <input type="text" id="username" placeholder="USERNAME" style="margin-bottom: 10px; text-align: center; width: 80%; padding: 5px; font-size: 1rem;">
+        <button id="loginBtn" class="neon-btn">START</button>
+        <button id="quitBtn" class="neon-btn">QUIT</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="login.js"></script>
+    <script>
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            const username = document.getElementById('username').value;
+            if (username) {
+                localStorage.setItem('username', username);
+                window.location.href = 'index.html';
+            } else {
+                alert('Please enter a username');
+            }
+        });
+
+        document.getElementById('quitBtn').addEventListener('click', () => {
+            window.close();
+        });
+
+        function displayHighScore() {
+            const bestScore = parseInt(localStorage.getItem('spaceDodgerBestScore') || '0', 10);
+            const bestDistance = parseInt(localStorage.getItem('spaceDodgerBestDistance') || '0', 10);
+            document.getElementById('high-score-value').textContent = `${bestScore}; ${(bestDistance / 1000).toFixed(1)} km`;
+        }
+
+        window.addEventListener('load', displayHighScore);
+    </script>
+</body>
+</html>

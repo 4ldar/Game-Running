@@ -12,6 +12,9 @@
     
     <!-- Menu is now visible by default, not hidden -->
     <div id="menu" class="menu">
+        <div id="username-container">
+            <span id="username-display"></span>
+        </div>
         <h1>SPACE DODGER</h1>
         <p class="subtitle">A JOURNEY THROUGH THE COSMOS</p>
         <div class="high-score">BEST: <span id="high-score-value">0; 0.0 km</span></div>
@@ -29,18 +32,36 @@
         <button id="confirmShipBtn" class="neon-btn">SELECT</button>
     </div>
 
-    <div id="hud" class="hud hidden">
-        <div class="hud-section">
-            <div class="hud-title">SCORE</div>
-            <div id="score" class="hud-value">0</div>
+    <div id="hud" class="hidden">
+        <div id="hud-top-left">
+            <div id="player-info" class="hud-section">
+                <div id="username-display-hud"></div>
+                <div id="hearts">❤️❤️❤️</div>
+            </div>
         </div>
-        <div class="hud-section">
-            <div class="hud-title">DISTANCE</div>
-            <div id="distance" class="hud-value">0.0 km</div>
+        <div id="hud-top-right">
+            <div class="hud-section">
+                <div class="hud-title">SCORE</div>
+                <div id="score" class="hud-value">0</div>
+            </div>
+            <div class="hud-section">
+                <div class="hud-title">DISTANCE</div>
+                <div id="distance" class="hud-value">0.0 km</div>
+            </div>
+            <div class="hud-section">
+                <div class="hud-title">DESTROYED</div>
+                <div id="destroyed" class="hud-value">0</div>
+            </div>
         </div>
-        <div class="hud-section">
-            <div class="hud-title">DESTROYED</div>
-            <div id="destroyed" class="hud-value">0</div>
+        <div id="hud-bottom-center">
+            <div class="hud-section">
+                <div class="hud-title">SKILL</div>
+                <div id="skill" class="hud-value">READY</div>
+            </div>
+            <div class="hud-section">
+                <div class="hud-title">SHIELD</div>
+                <div id="shield" class="hud-value">READY</div>
+            </div>
         </div>
         <div class="hud-section">
             <div class="hud-title">LEVEL</div>
@@ -49,14 +70,6 @@
         <div class="hud-section">
             <div class="hud-title">PROGRESS</div>
             <div id="level-progress" class="hud-value">0%</div>
-        </div>
-        <div class="hud-section">
-            <div class="hud-title">HEALTH</div>
-            <div id="hearts">❤️❤️❤️</div>
-        </div>
-        <div class="hud-section">
-            <div class="hud-title">SHIELD</div>
-            <div id="shield" class="hud-value">READY</div>
         </div>
     </div>
 
@@ -70,5 +83,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="main.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const username = localStorage.getItem('username');
+            if (username) {
+                const userDisplay = `PLAYER: ${username}`;
+                document.getElementById('username-display').textContent = userDisplay;
+                document.getElementById('username-display-hud').textContent = userDisplay;
+            }
+        });
+    </script>
 </body>
 </html>
