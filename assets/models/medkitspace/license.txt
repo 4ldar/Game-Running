@@ -1,0 +1,11 @@
+Model Information:
+* title:	Sci-Fi Medkit
+* source:	https://sketchfab.com/3d-models/sci-fi-medkit-139314307c144fb7989d713c60f7bd10
+* author:	carlosvasc670 (https://sketchfab.com/carlosvasc670)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Sci-Fi Medkit" (https://sketchfab.com/3d-models/sci-fi-medkit-139314307c144fb7989d713c60f7bd10) by carlosvasc670 (https://sketchfab.com/carlosvasc670) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

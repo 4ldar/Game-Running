@@ -156,7 +156,7 @@ body, html {
     box-sizing: border-box; /* Ensure padding and border are included in total size */
 }
 
-#hud-top-left, #hud-top-right, #hud-bottom-center {
+#hud-top-left, #hud-bottom-right, #hud-bottom-center, #hud-top-right {
     background: rgba(0,0,0,0.7);
     padding: 15px;
     border: 2px solid #0ff;
@@ -173,6 +173,16 @@ body, html {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
+}
+
+#hud-bottom-right {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 10px;
 }
 
@@ -254,20 +264,20 @@ body, html {
 /* Subtle Notifications - Non-intrusive */
 .level-up-subtle {
     position: fixed;
-    top: 20px;
+    top: 80px; /* Moved up */
     left: 50%;
     transform: translateX(-50%);
     z-index: 1000;
-    animation: slideDown 0.5s ease-out;
+    animation: slideDown 0.5s ease-out; /* Reverted animation */
 }
 
 .boss-warning-subtle {
     position: fixed;
-    top: 80px;
+    top: 150px; /* Moved up */
     left: 50%;
     transform: translateX(-50%);
     z-index: 1000;
-    animation: slideDown 0.5s ease-out;
+    animation: slideDown 0.5s ease-out; /* Reverted animation */
 }
 
 .level-up-subtle-content, .boss-warning-subtle-content {
@@ -289,7 +299,7 @@ body, html {
 
 .boss-warning-subtle-content {
     border-color: #ff0000;
-    box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3);
+    box-shadow: 0 44px 20px rgba(255, 0, 0, 0.3);
 }
 
 .level-up-icon, .boss-warning-icon {
@@ -454,4 +464,78 @@ body, html {
     .level-up-bonus, .boss-warning-level {
         font-size: 0.8rem;
     }
+}
+
+.game-over-screen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: rgba(10, 20, 35, 0.7);
+    padding: 40px;
+    border: 2px solid #ff0000; /* Red border for game over */
+    border-radius: 10px;
+    box-shadow: 0 0 25px #ff0000; /* Red shadow */
+    z-index: 10;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    color: #fff;
+}
+
+.game-over-screen h2 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    color: #ff0000; /* Red color for "GAME OVER" */
+    text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
+    letter-spacing: 4px;
+}
+
+.game-over-stats p {
+    font-size: 1.2rem;
+    margin: 10px 0;
+    color: #fff;
+}
+
+.game-over-stats span {
+    font-weight: bold;
+    color: #ffd700; /* Gold for values */
+    text-shadow: 0 0 5px #ffd700;
+}
+
+.controls-hud {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: rgba(10, 20, 35, 0.7);
+    padding: 40px;
+    border: 2px solid #00ffff; /* Cyan border */
+    border-radius: 10px;
+    box-shadow: 0 0 25px #00ffff; /* Cyan shadow */
+    z-index: 11; /* Increased z-index */
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    color: #fff;
+}
+
+.controls-hud h2 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: #00ffff;
+    text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff;
+    letter-spacing: 3px;
+}
+
+.controls-hud p {
+    font-size: 1.1rem;
+    margin: 10px 0;
+    color: #fff;
+}
+
+.controls-hud p span {
+    font-weight: bold;
+    color: #ffd700; /* Gold for key names */
+    text-shadow: 0 0 5px #ffd700;
 }

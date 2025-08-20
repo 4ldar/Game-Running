@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Space Dodger</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.9">
 </head>
 <body>
     <div id="transition" class="transition"></div>
@@ -39,7 +39,7 @@
                 <div id="hearts">❤️❤️❤️</div>
             </div>
         </div>
-        <div id="hud-top-right">
+        <div id="hud-bottom-right">
             <div class="hud-section">
                 <div class="hud-title">SCORE</div>
                 <div id="score" class="hud-value">0</div>
@@ -63,26 +63,49 @@
                 <div id="shield" class="hud-value">READY</div>
             </div>
         </div>
-        <div class="hud-section">
-            <div class="hud-title">LEVEL</div>
-            <div id="level" class="hud-value">LEVEL 1</div>
-        </div>
-        <div class="hud-section">
-            <div class="hud-title">PROGRESS</div>
-            <div id="level-progress" class="hud-value">0%</div>
+        <div id="hud-top-right">
+            <div class="hud-section">
+                <div class="hud-title">LEVEL</div>
+                <div id="level" class="hud-value">LEVEL 1</div>
+            </div>
+            <div class="hud-section">
+                <div class="hud-title">PROGRESS</div>
+                <div id="level-progress" class="hud-value">0%</div>
+            </div>
         </div>
     </div>
 
     <div id="pauseMenu" class="pause-menu hidden">
         <h2>PAUSED</h2>
         <button id="resumeBtn" class="neon-btn small">RESUME</button>
+        <button id="controlsBtn" class="neon-btn small">CONTROLS</button>
         <button id="quitToMenuBtn" class="neon-btn small">QUIT TO MENU</button>
+    </div>
+
+    <div id="gameOverScreen" class="game-over-screen hidden">
+        <h2>GAME OVER</h2>
+        <div class="game-over-stats">
+            <p>SCORE: <span id="final-score">0</span></p>
+            <p>DISTANCE: <span id="final-distance">0.0 km</span></p>
+            <p>ASTEROIDS DESTROYED: <span id="final-destroyed">0</span></p>
+            <p>LEVEL REACHED: <span id="final-level">1</span></p>
+        </div>
+        <button id="backToMenuBtn" class="neon-btn">BACK TO MENU</button>
+    </div>
+
+    <div id="controlsHud" class="controls-hud hidden">
+        <h2>CONTROLS</h2>
+        <p>MOVE: <span>A / D</span> or <span>Left / Right Arrows</span></p>
+        <p>SHOOT: <span>SPACE</span></p>
+        <p>SKILL: <span>1</span></p>
+        <p>SHIELD: <span>S</span></p>
+        <button id="closeControlsBtn" class="neon-btn small">CLOSE</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="main.js"></script>
+    <script src="main.js?v=1.9"></script>
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
             const username = localStorage.getItem('username');

@@ -23,7 +23,7 @@ let loadedShipModels = [];
 let currentShipIndex = 0;
 
 // Game objects
-let asteroids = [], bullets = [], debris = [];
+let asteroids = [], bullets = [], debris = [], medkits = [], medkitModel = null;
 let shieldMesh, thruster;
 
 // ========== GAME STATE ========== 
@@ -33,8 +33,10 @@ let level = 1, levelProgress = 0;
 let asteroidSpawnCounter = 0;
 let shieldActive = false, shieldTimer = 0, shieldCooldown = 0;
 let isPlanetLevel = false;
-let skillActive = false, skillCooldown = 0;
+let skillActive = false, skillCooldown = 0, skillTimer = 0;
 let laser = null;
+let currentBossWarning = null; // To hold the boss warning element
+
 
 // Camera positions
 const menuCameraPos = new THREE.Vector3(0, 2, 12);
@@ -50,6 +52,8 @@ inGameMusic.volume = 0.95;
 const inGameAmbient = new Audio('assets/sounds/ingame.mp3');
 inGameAmbient.loop = true;
 inGameAmbient.volume = 0.6;
+const laserStarfireSound = new Audio('assets/sounds/laserstarfire.mp3');
+laserStarfireSound.loop = true;
 
 function playSound(soundFile, volume = 1.0) {
     try {
@@ -80,6 +84,8 @@ function stopAllMusic() {
     mainMenuMusic.pause();
     inGameMusic.pause();
     inGameAmbient.pause();
+    laserStarfireSound.pause();
+    laserStarfireSound.currentTime = 0;
 }
 
 function triggerScreenShake(duration = 10, intensity = 0.1) {
@@ -93,6 +99,7 @@ function init() {
     initThree();
     loadAllShips();
     displayHighScore();
+    document.getElementById('controlsHud').classList.add('hidden'); // Hide controls on init
     animate();
 }
 
@@ -120,6 +127,9 @@ function setupEventListeners() {
     document.getElementById('confirmShipBtn').addEventListener('click', confirmShipSelection);
     document.getElementById('resumeBtn').addEventListener('click', resumeGame);
     document.getElementById('quitToMenuBtn').addEventListener('click', quitToMenu);
+    document.getElementById('backToMenuBtn').addEventListener('click', quitToMenu);
+    document.getElementById('controlsBtn').addEventListener('click', showControlsMenu);
+    document.getElementById('closeControlsBtn').addEventListener('click', hideControlsMenu);
 
     window.addEventListener('keydown', e => {
         keys[e.code] = true;
@@ -134,6 +144,19 @@ function setupEventListeners() {
         }
         if (e.code === "KeyS" && gameState === 'playing' && !shieldActive && shieldCooldown <= 0) activateShield();
         if (e.code === "Digit1" && gameState === 'playing' && !skillActive && skillCooldown <= 0) activateSkill();
+        if (e.code === "KeyH") {
+            const controlsHud = document.getElementById('controlsHud');
+            if (controlsHud.classList.contains('hidden')) {
+                // If controls are hidden, show them
+                if (gameState === 'playing') {
+                    togglePause(); // Pause if we are playing
+                }
+                showControlsMenu();
+            } else {
+                // If controls are visible, hide them
+                hideControlsMenu();
+            }
+        }
     });
     window.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === "Space") keys['SpaceFired'] = false; });
     window.addEventListener('resize', onWindowResize);
@@ -141,26 +164,37 @@ function setupEventListeners() {
 
 // ========== HIGH SCORE LOGIC ========== 
 function displayHighScore() {
-    const bestScore = parseInt(localStorage.getItem('spaceDodgerBestScore'));
-    const bestDistance = parseInt(localStorage.getItem('spaceDodgerBestDistance'));
+    const username = localStorage.getItem('username');
+    if (!username) {
+        document.getElementById('high-score-value').textContent = 'N/A';
+        return;
+    }
+    const bestScore = parseInt(localStorage.getItem(`spaceDodgerBestScore_${username}`));
+    const bestDistance = parseInt(localStorage.getItem(`spaceDodgerBestDistance_${username}`));
     const highScoreElement = document.getElementById('high-score-value');
 
     if (isNaN(bestScore) || isNaN(bestDistance)) {
-        highScoreElement.textContent = 'N/A';
+        highScoreElement.textContent = '0; 0.0 km';
     } else {
         highScoreElement.textContent = `${bestScore}; ${(bestDistance / 1000).toFixed(1)} km`;
     }
 }
 
 function updateHighScore() {
-    const bestScore = parseInt(localStorage.getItem('spaceDodgerBestScore') || '0', 10);
+    const username = localStorage.getItem('username');
+    if (!username) return; // Don't save if no user
+
+    const bestScoreKey = `spaceDodgerBestScore_${username}`;
+    const bestDistanceKey = `spaceDodgerBestDistance_${username}`;
+
+    const bestScore = parseInt(localStorage.getItem(bestScoreKey) || '0', 10);
     if (score > bestScore) {
-        localStorage.setItem('spaceDodgerBestScore', score);
+        localStorage.setItem(bestScoreKey, score);
     }
 
-    const bestDistance = parseInt(localStorage.getItem('spaceDodgerBestDistance') || '0', 10);
+    const bestDistance = parseInt(localStorage.getItem(bestDistanceKey) || '0', 10);
     if (distance > bestDistance) {
-        localStorage.setItem('spaceDodgerBestDistance', distance);
+        localStorage.setItem(bestDistanceKey, distance);
     }
     displayHighScore();
 }
@@ -168,7 +202,8 @@ function updateHighScore() {
 // ========== SHIP & GAMEPLAY SETUP ========== 
 function loadAllShips() {
     const loader = new THREE.GLTFLoader();
-    let shipsLoaded = 0;
+    let assetsLoaded = 0; // Renamed from shipsLoaded
+    const totalAssetsToLoad = shipData.length + 1; // +1 for medkit model
     const subtitle = document.querySelector('#menu .subtitle');
     subtitle.textContent = 'LOADING ASSETS...';
 
@@ -180,8 +215,8 @@ function loadAllShips() {
             model.visible = false;
             loadedShipModels[index] = model;
             scene.add(model);
-            shipsLoaded++;
-            if (shipsLoaded === shipData.length) {
+            assetsLoaded++;
+            if (assetsLoaded === totalAssetsToLoad) {
                 gameState = 'menu';
                 subtitle.textContent = 'A JOURNEY THROUGH THE COSMOS';
                 player = loadedShipModels[currentShipIndex];
@@ -189,9 +224,34 @@ function loadAllShips() {
             }
         }, undefined, (error) => {
             console.error(`Failed to load ship: ${shipInfo.name}`, error);
-            shipsLoaded++;
-            if (shipsLoaded === shipData.length) { gameState = 'menu'; subtitle.textContent = 'ERROR: COULD NOT LOAD ASSETS'; }
+            assetsLoaded++;
+            if (assetsLoaded === totalAssetsToLoad) { gameState = 'menu'; subtitle.textContent = 'ERROR: COULD NOT LOAD ASSETS'; }
         });
+    });
+
+    // Load Medkit Model
+    loader.load('assets/models/medkitspace/scene.gltf', (gltf) => {
+        medkitModel = gltf.scene;
+        // Center the model geometry to fix visibility issues
+        const box = new THREE.Box3().setFromObject(medkitModel);
+        const center = box.getCenter(new THREE.Vector3());
+        medkitModel.position.sub(center);
+
+        medkitModel.scale.set(0.3, 0.3, 0.3); // Increased scale
+        medkitModel.rotation.x = Math.PI / 2; // Rotate to face the camera
+        medkitModel.visible = false; // Keep it hidden until spawned
+        // scene.add(medkitModel); // Don't add to scene directly, clone it when spawning
+        assetsLoaded++;
+        if (assetsLoaded === totalAssetsToLoad) {
+            gameState = 'menu';
+            subtitle.textContent = 'A JOURNEY THROUGH THE COSMOS';
+            player = loadedShipModels[currentShipIndex];
+            startMainMenuMusic();
+        }
+    }, undefined, (error) => {
+        console.error('Failed to load medkit model:', error);
+        assetsLoaded++;
+        if (assetsLoaded === totalAssetsToLoad) { gameState = 'menu'; subtitle.textContent = 'ERROR: COULD NOT LOAD ASSETS'; }
     });
 }
 
@@ -234,6 +294,7 @@ function startLevelTransition() {
 }
 
 let particles; // Define particles in a broader scope
+let ground = null; // Global variable for planetscape ground
 
 function createThruster() {
     if (thruster && thruster.parent) thruster.parent.remove(thruster);
@@ -310,13 +371,23 @@ function quitToMenu() {
     document.getElementById('pauseMenu').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('ship-selection').classList.add('hidden');
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    document.getElementById('controlsHud').classList.add('hidden'); // Hide controls on quit to menu
     document.getElementById('menu').classList.remove('hidden');
     displayHighScore();
+    // Explicitly stop laser sound before starting main menu music
+    laserStarfireSound.pause();
+    laserStarfireSound.currentTime = 0;
     startMainMenuMusic();
     // Reset camera and background to galaxy
     camera.position.copy(menuCameraPos);
     scene.background = new THREE.Color(0x000011);
+    scene.fog = null; // Remove fog from planet level
     if (!starfield) createGalaxy(); // Recreate galaxy if it was removed for planetscape
+    if (ground) { // Remove planetscape ground if it exists
+        scene.remove(ground);
+        ground = null;
+    }
 }
 
 function gameOver() {
@@ -325,10 +396,18 @@ function gameOver() {
     if(player) player.visible = false;
     stopAllMusic();
     
-    setTimeout(() => {
-        alert(`GAME OVER\nScore: ${score}\nDistance: ${(distance / 1000).toFixed(1)} km\nAsteroids Destroyed: ${asteroidsDestroyed}\nLevel Reached: ${level}`);
-        quitToMenu(); // Call quitToMenu for full reset
-    }, 500);
+    // Hide HUD and show game over screen
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('gameOverScreen').classList.remove('hidden');
+
+    // Populate game over stats
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('final-distance').textContent = `${(distance / 1000).toFixed(1)} km`;
+    document.getElementById('final-destroyed').textContent = asteroidsDestroyed;
+    document.getElementById('final-level').textContent = level;
+
+    // No alert, just show the screen. User will click "Back to Menu"
+    // quitToMenu() will be called by the button click
 }
 
 // ========== GAME MECHANICS ========== 
@@ -348,7 +427,49 @@ function createExplosion(position) {
     }
 }
 
+function spawnBossAsteroid() {
+    const bossSize = 2.5;
+    const bossHealth = level; // HP boss is now equal to the level
+    
+    const boss = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(bossSize, 1), 
+        new THREE.MeshStandardMaterial({
+            color: 0xff0000, 
+            flatShading: true,
+            emissive: 0x330000,
+            emissiveIntensity: 0.3
+        })
+    );
+    
+    boss.position.set(0, 0, -100);
+    boss.userData = { 
+        speed: getAsteroidSpeed() * 0.5,
+        health: bossHealth,
+        maxHealth: bossHealth,
+        isBoss: true,
+        rotationSpeed: new THREE.Vector3(0.01, 0.01, 0.01)
+    };
+    
+    const glowGeometry = new THREE.SphereGeometry(bossSize + 0.3, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000, 
+        transparent: true, 
+        opacity: 0.3 
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    boss.add(glow);
+    
+    scene.add(boss);
+    asteroids.push(boss);
+    
+    showBossWarning();
+}
+
 function showBossWarning() {
+    if (currentBossWarning && currentBossWarning.parentNode) {
+        currentBossWarning.parentNode.removeChild(currentBossWarning);
+    }
+
     const warning = document.createElement('div');
     warning.className = 'boss-warning-subtle';
     warning.innerHTML = `
@@ -359,12 +480,14 @@ function showBossWarning() {
         </div>
     `;
     document.body.appendChild(warning);
-    
+    currentBossWarning = warning;
+
     setTimeout(() => {
-        if (warning.parentNode) {
-            warning.parentNode.removeChild(warning);
+        if (currentBossWarning && currentBossWarning.parentNode) {
+            currentBossWarning.parentNode.removeChild(currentBossWarning);
+            currentBossWarning = null;
         }
-    }, 4000);
+    }, 5000);
 }
 
 function showLevelUp() {
@@ -491,13 +614,46 @@ function spawnBossAsteroid() {
     showBossWarning();
 }
 
+function spawnMedkit() {
+    // Only spawn if health is not full
+    if (health >= 3) return;
+
+    // More frequent chance to spawn (e.g., 1 in 200 frames)
+    if (Math.random() > 0.005) return; // 0.5% chance per frame
+
+    if (!medkitModel) {
+        console.warn("Medkit model not loaded yet!");
+        return;
+    }
+
+    const lane = [-4, -2, 0, 2, 4][Math.floor(Math.random() * 5)];
+    
+    const medkit = medkitModel.clone(); // Clone the pre-loaded model
+    medkit.position.set(lane, 0, -100); // Spawn far away
+    medkit.userData = { speed: 0.15 }; // Slower speed for easier pickup
+    medkit.visible = true; // Make the cloned medkit visible
+
+    // Add a glow effect to make it more visible
+    const glowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, // Green glow
+        transparent: true, 
+        opacity: 0.4 
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    medkit.add(glow);
+
+    scene.add(medkit);
+    medkits.push(medkit);
+}
+
 function shootBullet() {
     if (!player) return;
 
     if (skillActive) {
         // TODO: Add new laser sounds for skills when provided
         if (shipData[currentShipIndex].name === 'STARFIRE') {
-            playSound('laserstarfire.mp3');
+            // playSound('laserstarfire.mp3'); // Removed, handled in updatePlayingState
             if (!laser) {
                 const laserGeo = new THREE.CylinderGeometry(0.1, 0.1, 100, 8);
                 const laserMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
@@ -531,7 +687,8 @@ function shootBullet() {
 
 function activateShield() {
     if (shieldActive || shieldCooldown > 0) return;
-    shieldActive = true; shieldTimer = 300;
+    shieldActive = true; shieldTimer = 600; // 10 seconds duration (10 * 60 FPS)
+    shieldCooldown = 900; // 15 seconds cooldown (15 * 60 FPS)
     if (player && !shieldMesh) {
         shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), new THREE.MeshStandardMaterial({ color: 0x0088ff, transparent: true, opacity: 0.3, emissive: 0x0088ff, emissiveIntensity: 1, depthWrite: false }));
         player.add(shieldMesh);
@@ -541,9 +698,8 @@ function activateShield() {
 
 function activateSkill() {
     if (skillActive || skillCooldown > 0) return;
-    // TODO: Add new laser sounds for skills when provided
     skillActive = true;
-    skillCooldown = 600; // 10 seconds cooldown
+    skillTimer = 480; // 8 seconds duration (8 * 60 FPS)
     updateHUD();
 }
 
@@ -606,6 +762,7 @@ function updatePlayingState() {
     if (keys['KeyA'] || keys['ArrowLeft']) player.position.x -= 0.2;
     if (keys['KeyD'] || keys['ArrowRight']) player.position.x += 0.2;
     player.position.x = Math.max(-5, Math.min(5, player.position.x));
+    player.position.y = 0; // Explicitly keep player at y=0
 
     const newLevel = getCurrentLevel();
     if (newLevel > level) {
@@ -623,6 +780,7 @@ function updatePlayingState() {
         spawnAsteroid(); 
         asteroidSpawnCounter = 0; 
     }
+    spawnMedkit(); // Call spawnMedkit here
     
     if (shouldSpawnBoss() && asteroids.every(ast => !ast.userData.isBoss)) {
         spawnBossAsteroid();
@@ -642,6 +800,12 @@ function updatePlayingState() {
         const collisionDistance = shieldActive ? baseCollisionDistance + 0.8 : baseCollisionDistance;
         
         if (player.position.distanceTo(ast.position) < collisionDistance) { 
+            if (ast.userData.isBoss) {
+                if (currentBossWarning && currentBossWarning.parentNode) {
+                    currentBossWarning.parentNode.removeChild(currentBossWarning);
+                    currentBossWarning = null;
+                }
+            }
             handleDamage(); 
             scene.remove(ast); 
             asteroids.splice(i, 1); 
@@ -653,7 +817,7 @@ function updatePlayingState() {
         b.position.z += b.userData.speed;
         if (b.position.z < -50) { scene.remove(b); bullets.splice(i, 1); continue; }
         for (let j = asteroids.length - 1; j >= 0; j--) {
-            if (asteroids[j] && b.position.distanceTo(asteroids[j].position) < 1) {
+            if (asteroids[j] && b.position.distanceTo(asteroids[j].position) < (asteroids[j].geometry.parameters.radius + 0.1)) { // Accurate hitbox
                 const asteroid = asteroids[j];
                 asteroid.userData.health--;
                 
@@ -666,6 +830,13 @@ function updatePlayingState() {
                     const points = asteroid.userData.isBoss ? level * 100 : 50;
                     score += points;
                     asteroidsDestroyed++;
+
+                    if (asteroid.userData.isBoss) {
+                        if (currentBossWarning && currentBossWarning.parentNode) {
+                            currentBossWarning.parentNode.removeChild(currentBossWarning);
+                            currentBossWarning = null;
+                        }
+                    }
                     
                     createExplosion(asteroid.position);
                     scene.remove(asteroid); 
@@ -675,6 +846,32 @@ function updatePlayingState() {
                 scene.remove(b); bullets.splice(i, 1);
                 break;
             }
+        }
+    }
+
+    // Medkit collision detection and effect
+    for (let i = medkits.length - 1; i >= 0; i--) {
+        const medkit = medkits[i];
+        medkit.rotation.y += 0.05; // Make it rotate for visibility
+        medkit.rotation.z += 0.05;
+        medkit.position.z += medkit.userData.speed; // Move medkit towards player
+
+        // Remove if off-screen
+        if (medkit.position.z > 10) {
+            scene.remove(medkit);
+            medkits.splice(i, 1);
+            continue;
+        }
+
+        // Collision with player
+        if (player.position.distanceTo(medkit.position) < 1.0) { // Adjust collision distance as needed
+            if (health < 3) { // Only heal if not max health
+                health++;
+                playSound('heal.mp3'); // Use the new heal sound
+                updateHearts();
+            }
+            scene.remove(medkit);
+            medkits.splice(i, 1);
         }
     }
 
@@ -696,10 +893,15 @@ function updatePlayingState() {
             }
             laser.position.set(player.position.x, player.position.y, player.position.z - 50);
 
+            // Play laser sound if not already playing
+            if (laserStarfireSound.paused) {
+                laserStarfireSound.play().catch(e => console.error("Laser Starfire sound play failed:", e));
+            }
+
             for (let i = asteroids.length - 1; i >= 0; i--) {
                 const ast = asteroids[i];
                 if (Math.abs(ast.position.x - player.position.x) < 0.5) {
-                    ast.userData.health -= 0.1; // Damage over time
+                    ast.userData.health -= 0.1; // Reduced damage for balance
                     if (ast.userData.health <= 0) {
                         const points = ast.userData.isBoss ? level * 100 : 50;
                         score += points;
@@ -711,20 +913,35 @@ function updatePlayingState() {
                 }
             }
 
-        } else if (laser) {
-            scene.remove(laser);
-            laser = null;
-        }
-
-        skillCooldown--;
-        if (skillCooldown <= 0) {
-            skillActive = false;
+        } else { // If not STARFIRE or Space is not held
             if (laser) {
                 scene.remove(laser);
                 laser = null;
             }
+            // Pause laser sound if it's playing
+            if (!laserStarfireSound.paused) {
+                laserStarfireSound.pause();
+                laserStarfireSound.currentTime = 0; // Reset sound to start for next play
+            }
         }
-    } else if (skillCooldown > 0) {
+
+        skillTimer--; // Decrement skill duration timer
+        if (skillTimer <= 0) {
+            skillActive = false;
+            skillCooldown = 600; // Start 10-second cooldown AFTER skill finishes
+            if (laser) {
+                scene.remove(laser);
+                laser = null;
+            }
+            // Pause laser sound if skill becomes inactive
+            if (!laserStarfireSound.paused) {
+                laserStarfireSound.pause();
+                laserStarfireSound.currentTime = 0;
+            }
+        }
+    }
+    // Cooldown always ticks down if it's active, regardless of skillActive state
+    if (skillCooldown > 0) {
         skillCooldown--;
     }
 
@@ -777,7 +994,7 @@ function updateHUD() {
     else { shieldDisplay.textContent = 'READY'; shieldDisplay.style.color = '#00ff88'; }
 
     const skillDisplay = document.getElementById('skill');
-    if (skillActive) { skillDisplay.textContent = `ACTIVE: ${Math.ceil(skillCooldown / 60)}s`; skillDisplay.style.color = '#ffcc00'; } 
+    if (skillActive) { skillDisplay.textContent = `ACTIVE: ${Math.ceil(skillTimer / 60)}s`; skillDisplay.style.color = '#ffcc00'; } 
     else if (skillCooldown > 0) { skillDisplay.textContent = `COOLDOWN: ${Math.ceil(skillCooldown / 60)}s`; skillDisplay.style.color = '#ff6600'; }
     else { skillDisplay.textContent = 'READY'; skillDisplay.style.color = '#00ff88'; }
 
@@ -785,6 +1002,14 @@ function updateHUD() {
 }
 
 function updateHearts() { document.getElementById('hearts').textContent = '❤️'.repeat(health); }
+
+function showControlsMenu() {
+    document.getElementById('controlsHud').classList.remove('hidden');
+}
+
+function hideControlsMenu() {
+    document.getElementById('controlsHud').classList.add('hidden');
+}
 
 function togglePause() { 
     gameState = (gameState === 'playing') ? 'paused' : 'playing'; 
@@ -836,11 +1061,9 @@ function createPlanetscape() {
     }
 
     // Add a ground plane to represent the planet surface
-    const groundGeometry = new THREE.PlaneGeometry(100, 200, 10, 10);
     const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, side: THREE.DoubleSide });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground = new THREE.Mesh(groundGeometry, groundMaterial); // Assign to global ground
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -10;
     scene.add(ground);
 
     // Add some fog
